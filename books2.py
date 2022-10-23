@@ -88,8 +88,6 @@ async def read_all_books(books_to_return: Optional[int] = None):
     return BOOKS
 
 
-
-
 @app.get("/book/{book_id}")
 async def read_book(book_id:UUID):
     for x in BOOKS:
