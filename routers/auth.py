@@ -1,4 +1,7 @@
-from fastapi import FastAPI, Depends, HTTPException,status
+import sys
+sys.path.append("..")
+
+from fastapi import FastAPI, Depends, HTTPException,status, APIRouter
 from pydantic import BaseModel
 from typing import Optional
 import models
@@ -20,15 +23,20 @@ class CreateUser(BaseModel):
     first_mame: str
     last_name: str
     password: str
+    phone_number: Optional[str]
 
 
-bcrypt_context = CryptContext(schemes=["bcrypt"],deprecated="auto")
+bcrypt_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 models.Base.metadata.create_all(bind=engine)
 
 oauth2_bearer = OAuth2PasswordBearer(tokenUrl="token")
 
-app = FastAPI()
+router = APIRouter(
+    prefix="/auth",
+    tags=["auth"],
+    responses={401: {"user": "Not authorized"}}
+)
 
 def get_db():
     try:
@@ -55,35 +63,35 @@ def authenticate_user(username:str, password:str, db):
 
 def create_access_token(username: str, user_id: int,
                         expires_delta: Optional[timedelta] = None):
-    encode = {"sub":username, "id": user_id}
+    encode = {"sub": username, "id": user_id}
     if expires_delta:
         expire = datetime.utcnow() + expires_delta
     else:
         expire = datetime.utcnow() - timedelta(minutes=15)
-    encode.update({"exp":expire})
+    encode.update({"exp": expire})
     return jwt.encode(encode, SECRET_KEY, algorithm=ALGORITHM)
 
 
-async def get_current_user(token:str= Depends(oauth2_bearer)):
+async def get_current_user(token: str = Depends(oauth2_bearer)):
     try:
-        payload = jwt.decode(token,SECRET_KEY, algorithms=[ALGORITHM])
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
         username: str = payload.get("sub")
         user_id: int = payload.get("id")
-        if username is None or user_id in None:
+        if username is None or user_id is None:
             raise get_user_exception()
-        return {"username": username, "id":user_id}
+        return {"username": username, "id": user_id}
+    except JWTError:
+        raise get_user_exception()
 
-    except: JWTError
-    raise get_user_exception()
 
-
-@app.post("/create/user")
+@router.post("/create/user")
 async def create_new_user(create_user: CreateUser, db: Session = Depends(get_db)):
     create_user_model = models.Users()
     create_user_model.email = create_user.email
     create_user_model.username = create_user.username
     create_user_model.first_name = create_user.first_mame
     create_user_model.last_name = create_user.last_name
+    create_user_model.phone_number = create_user.phone_number
 
     hash_password = get_password_hash(create_user.password)
 
@@ -94,7 +102,7 @@ async def create_new_user(create_user: CreateUser, db: Session = Depends(get_db)
     db.commit()
 
 
-@app.post("/token")
+@router.post("/token")
 async def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends(),
                                  db: Session = Depends(get_db)):
     user = authenticate_user(form_data.username, form_data.password, db)
